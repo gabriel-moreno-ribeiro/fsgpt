@@ -1,0 +1,16 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - run: dotnet build -c Release
+      - run: dotnet run -c Release --no-build -- test
+      - name: train the two-digit addition model
+        run: dotnet run -c Release --no-build -- train-add --steps 1200 --out model.bin
+      - run: dotnet run -c Release --no-build -- add 37+58
+      - run: dotnet run -c Release --no-build -- text README.md --steps 300 --block 32
