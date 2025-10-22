@@ -1,57 +1,28 @@
 # fsgpt
 
-A GPT-style language model written from scratch in F#: a reverse-mode
-automatic differentiation engine over 2D tensors, a decoder-only
-transformer (token and position embeddings, multi-head causal
-self-attention, GELU feed-forward blocks, layer normalisation), the AdamW
-optimiser with warmup and cosine decay, and greedy or sampled generation.
-No numerical libraries; every matmul and every gradient is hand-written.
+Um modelo de linguagem estilo GPT em F#, do zero: um motor de diferenciação automática reversa sobre tensores 2D, um transformer decoder-only (embeddings de token e posição, self-attention causal multi-cabeça, blocos feed-forward com GELU, layer norm), o otimizador AdamW com warmup e decaimento por cosseno, e geração gulosa ou amostrada. Nenhuma biblioteca numérica; cada matmul e cada gradiente foi escrito na mão.
 
-The built-in task is arithmetic: the model reads `12+07=` one character
-at a time and learns to write `019`. A second mode trains a
-character-level model on any text file and samples from it.
+A tarefa embutida é aritmética: o modelo lê `12+07=` caractere por caractere e aprende a escrever `019`. Com 1500 passos ele acerta 100% das somas de dois dígitos que nunca viu. Tem também um modo que treina em qualquer arquivo de texto e gera continuações.
 
 ```sh
-dotnet run -c Release -- test                      # self-tests: numeric gradient checks, causality, learning
-dotnet run -c Release -- train-add --steps 3000    # learns two-digit addition, reports held-out accuracy
-dotnet run -c Release -- add 37+58                 # answers with the saved model
+dotnet run -c Release -- test                      # testes: gradientes numéricos, causalidade, aprendizado
+dotnet run -c Release -- train-add --steps 1500    # aprende a somar; reporta acurácia em problemas novos
+dotnet run -c Release -- add 37+58                 # responde com o modelo salvo
 dotnet run -c Release -- text README.md --steps 1000 --prompt "The model"
 ```
 
-## Design
+## Como é montado
 
-- `src/Tensor.fs` — tensors carry data, gradient, parents and a backward
-  closure. Operations: matmul, broadcast add, elementwise mul, scale,
-  GELU, transpose, row softmax, layer norm, row/column slices and
-  concatenations, embedding lookup, causal mask and weighted
-  cross-entropy. `backward` topologically sorts the graph and runs the
-  closures in reverse.
-- `src/Model.fs` — the transformer. Sequences in a batch are stacked into
-  one matrix for the linear layers and split per sequence for attention,
-  which slices the query/key/value matrices into heads, applies
-  `softmax(mask(QKᵀ/√d))V` and concatenates. AdamW applies weight decay to
-  matrices only; gradients are norm-clipped. Models save to a small binary
-  file.
-- `src/Tasks.fs` — datasets and training loops. Addition problems are
-  every pair of n-digit numbers, shuffled and split 90/10; the loss is
-  weighted so only the answer digits count. Text mode samples random
-  windows from a corpus.
+- `src/Tensor.fs`: um tensor carrega dados, gradiente, pais e uma closure de backward. Operações: matmul, soma com broadcast, produto elemento a elemento, escala, GELU, transposição, softmax por linha, layer norm, fatias e concatenações de linhas/colunas, lookup de embedding, máscara causal e cross-entropy ponderada. `backward` ordena o grafo topologicamente e roda as closures ao contrário.
+- `src/Model.fs`: o transformer. As sequências de um batch são empilhadas numa matriz pras camadas lineares e separadas por sequência pra atenção, que fatia Q/K/V em cabeças, aplica `softmax(mask(QKᵀ/√d))V` e concatena. AdamW aplica weight decay só em matrizes; gradientes são cortados por norma. Modelos salvam num binário pequeno.
+- `src/Tasks.fs`: dados e loops de treino. Os problemas de adição são todos os pares de números de n dígitos, embaralhados e divididos 90/10; a loss só conta os dígitos da resposta.
 
-Default model: 2 layers, 64-dimensional, 4 heads (about 105k parameters
-for the addition vocabulary). Two-digit addition reaches over 90% exact
-answers on unseen problems after a few thousand steps on a CPU.
+Modelo padrão: 2 camadas, 64 dimensões, 4 cabeças (uns 105 mil parâmetros).
 
-## Tests
+A parte que eu subestimei foi o gradient checking: comparar cada gradiente com diferenças finitas em float32 é traiçoeiro, porque pesos de 0.02 são menores que um passo de 0.01. O teste do modelo inteiro escala os pesos e usa um passo menor, e aí sim bate.
 
-`dotnet run -- test` checks tensor operations against known values,
-compares every autograd gradient with central finite differences
-(a linear/GELU/layer-norm chain, a two-head causal attention block,
-embeddings with slices and concatenations, and the whole model), verifies
-causality (a later token cannot change earlier logits), batching
-consistency, save/load, generation, dataset formatting, that the loss
-falls, that the model learns one-digit addition to at least 95%, and that
-a text model learns a repeating pattern.
+Testes: `dotnet run -- test` (operações contra valores conhecidos, todo gradiente comparado com diferenças finitas centrais numa cadeia linear/GELU/layer norm, num bloco de atenção causal de duas cabeças, em embeddings com fatias e no modelo inteiro; causalidade, consistência do batch, salvar/carregar, geração, formatação do dataset, a loss caindo, o modelo aprendendo adição de um dígito a 95%+, e um modelo de texto aprendendo um padrão repetido).
 
-## License
+---
 
-MIT
+**EN:** a GPT-style transformer in F# with a hand-written reverse-mode autograd engine over 2D tensors, multi-head causal attention, GELU MLP blocks, layer norm, AdamW with warmup and cosine decay, and greedy/sampled generation. Learns two-digit addition to 100% on unseen problems; the tests include finite-difference gradient checks of every operation and of the whole model. MIT.
